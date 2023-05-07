@@ -7,12 +7,31 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import serial
 from fastapi import FastAPI
-from makerapi.models import schemas
+from makerapi.models.schemas import CookingProcess, ProcessStep
+from makerapi.models.database import SessionLocal
+from fastapi.middleware.cors import CORSMiddleware
+
 import uvicorn
+
+
 
 
 app = FastAPI()
 arduino = serial.Serial('COM3', 9600)  # Replace 'COM3' with the appropriate port
+
+
+origins = [
+    "http://localhost:3000",
+    # Add more origins if needed
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
 @app.get("/temperature")
 def get_temperature():
@@ -54,6 +73,103 @@ def parse_water_level(data):
     water_level_start = data.index("Water Level: ") + len("Water Level: ")
     water_level = data[water_level_start:]
     return water_level
+
+
+@app.get("/processes/{process_id}")
+def get_process(process_id: int):
+    db = SessionLocal()
+    process = db.query(CookingProcess).get(process_id)
+    db.close()
+    
+    if process:
+        return process
+    else:
+        return {"message": "Process not found"}
+
+@app.post("/processes")
+def create_process(process: CookingProcess):
+    db = SessionLocal()
+    db.add(process)
+    db.commit()
+    db.refresh(process)
+    db.close()
+    
+    return {"message": "Process created"}
+
+@app.put("/processes/{process_id}")
+def update_process(process_id: int, process: CookingProcess):
+    db = SessionLocal()
+    existing_process = db.query(CookingProcess).get(process_id)
+    
+    if existing_process:
+        existing_process.name = process.name
+        db.commit()
+        db.close()
+        return {"message": "Process updated"}
+    else:
+        db.close()
+        return {"message": "Process not found"}
+
+@app.delete("/processes/{process_id}")
+def delete_process(process_id: int):
+    db = SessionLocal()
+    existing_process = db.query(CookingProcess).get(process_id)
+    
+    if existing_process:
+        db.delete(existing_process)
+        db.commit()
+        db.close()
+        return {"message": "Process deleted"}
+    else:
+        db.close()
+        return {"message": "Process not found"}
+
+@app.post("/processes/{process_id}/steps")
+def add_process_step(process_id: int, step: ProcessStep):
+    db = SessionLocal()
+    existing_process = db.query(CookingProcess).get(process_id)
+    
+    if existing_process:
+        existing_process.process_steps.append(step)
+        db.commit()
+        db.close()
+        return {"message": "Step added to process"}
+    else:
+        db.close()
+        return {"message": "Process not found"}
+
+@app.put("/processes/{process_id}/steps/{step_id}")
+def update_process_step(process_id: int, step_id: int, step: ProcessStep):
+    db = SessionLocal()
+    existing_process = db.query(CookingProcess).get(process_id)
+    
+    if existing_process and step_id < len(existing_process.process_steps):
+        existing_step = existing_process.process_steps[step_id]
+        existing_step.name = step.name
+        existing_step.requirements = step.requirements
+        existing_step.actions = step.actions
+        db.commit()
+        db.close()
+        return {"message": "Step updated"}
+    else:
+        db.close()
+        return {"message": "Process or step not found"}
+
+@app.delete("/processes/{process_id}/steps/{step_id}")
+def delete_process_step(process_id: int, step_id: int):
+    db = SessionLocal()
+    existing_process = db.query(CookingProcess).get(process_id)
+    
+    if existing_process and step_id < len(existing_process.process_steps):
+        existing_step = existing_process.process_steps[step_id]
+        db.delete(existing_step)
+        db.commit()
+        db.close()
+        return {"message": "Step deleted"}
+    else:
+        db.close()
+        return {"message": "Process or step not found"}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)  # Run the FastAPI server

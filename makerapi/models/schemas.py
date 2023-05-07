@@ -1,11 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from .database import Base
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.orm import relationship
+from pydantic import BaseModel
 
-DATABASE_URL = "sqlite:///./sqlite.db"  # Replace with your database URL
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
 class Container(Base):
     __tablename__ = "containers"
@@ -35,6 +32,36 @@ class CookingTiming(Base):
     container = relationship("Container", backref="cooking_timings")
     ingredient = relationship("Ingredient", backref="cooking_timings")
 
+class ProcessStep(BaseModel):
+    def __init__(self, name, requirements=None, actions=None):
+        self.name = name
+        self.requirements = requirements or []
+        self.actions = actions or []
 
 
-Base.metadata.create_all(bind=engine)
+class CookingProcess(BaseModel):
+    def __init__(self, name):
+        self.name = name
+        self.process_steps = []
+
+    def add_step(self, name, requirements=None, actions=None):
+        step = ProcessStep(name, requirements, actions)
+        self.process_steps.append(step)
+
+    def execute_process(self, available_items):
+        for step in self.process_steps:
+            if self.check_requirements(step, available_items):
+                print(f"Executing step: {step.name}")
+                for action in step.actions:
+                    # Execute the action here...
+                    print(f"Performing action: {action}")
+                print("Step completed.\n")
+                available_items.append(step.name)
+            else:
+                print(f"Cannot execute step: {step.name}. Requirements not met.\n")
+
+    def check_requirements(self, step, available_items):
+        for requirement in step.requirements:
+            if requirement not in available_items:
+                return False
+        return True
